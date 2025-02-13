@@ -1,0 +1,93 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: build-quarkus-image
+  namespace: "{{ pipeline_namespace }}"
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/tags: deploy
+    tekton.dev/displayName: "Build Quarkus"
+spec:
+  description: This task build a Quarkus application
+  params:
+    - description: Location of the repo where image has to be pushed
+      name: IMAGE
+      type: string
+    - default: 'openshift/ubi9-openjdk-21:1.21-3'
+      description: The java imagestream
+      name: JAVA_IMAGE
+      type: string
+    - default: 'registry.redhat.io/rhel8/buildah@sha256:5c7cd7c9a3d49e8905fc98693f6da605aeafae36bde5622dc78e12f31db3cd59'
+      description: The location of the buildah builder image.
+      name: BUILDER_IMAGE
+      type: string
+    - default: 'true'
+      description: Verify the TLS on the registry endpoint (for push/pull to a non-TLS registry)
+      name: TLSVERIFY
+      type: string
+    - default: 'false'
+      description: Skip pushing the built image
+      name: SKIP_PUSH
+      type: string
+  results:
+    - description: Digest of the image just built.
+      name: IMAGE_DIGEST
+      type: string
+  steps:
+    - name: build-and-push
+      image: $(params.BUILDER_IMAGE)
+      script: |
+        #!/bin/sh
+        set -e
+
+        echo "1"
+        buildah --storage-driver=vfs from --name custom-name $(params.JAVA_IMAGE)
+        container=$(buildah --storage-driver=vfs containers --quiet --filter name=custom-name)
+        echo "containerID = $container"
+
+        ls -la $(workspaces.source.path)
+        ls -la $(workspaces.source.path)/source/
+        ls -la $(workspaces.source.path)/source/target/
+        ls -la $(workspaces.source.path)/source/target/quarkus-app/
+        ls -la $(workspaces.source.path)/source/target/quarkus-app/lib/
+
+
+        buildah copy  --storage-driver=vfs $container $(workspaces.source.path)/source/target/quarkus-app/lib/ /deployments/lib/
+        echo "2"
+        buildah copy  --storage-driver=vfs $container $(workspaces.source.path)/source/target/quarkus-app/*.jar /deployments/
+        echo "3"
+        buildah copy --storage-driver=vfs $container $(workspaces.source.path)/source/target/quarkus-app/app/ /deployments/app/
+        echo "4"
+        buildah copy --storage-driver=vfs $container $(workspaces.source.path)/source/target/quarkus-app/quarkus/ /deployments/quarkus/
+        echo "5"
+        
+        buildah config --storage-driver=vfs --env JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager" $container
+
+        echo "6"
+        buildah config --storage-driver=vfs --env JAVA_APP_JAR="/deployments/quarkus-run.jar" $container
+
+        echo "7"
+        buildah config --storage-driver=vfs --entrypoint "/opt/jboss/container/java/run/run-java.sh" $container
+        echo "8"
+        buildah commit --storage-driver=vfs $container $(params.IMAGE)
+        echo "9"
+        buildah images --storage-driver=vfs
+        echo "10"
+        [[ "$(params.SKIP_PUSH)" == "true" ]] && echo "Push skipped" && exit 0
+        echo "11"
+        buildah push --storage-driver=vfs --tls-verify=$(params.TLSVERIFY) \
+          --digestfile $(workspaces.source.path)/image-digest $(params.IMAGE) \
+          docker://$(params.IMAGE)
+        echo "12"
+
+        cat $(workspaces.source.path)/image-digest | tee /tekton/results/IMAGE_DIGEST
+        echo "13"
+      securityContext:
+        capabilities:
+          add:
+            - SETFCAP
+  workspaces:
+    - mountPath: /workspace/source
+      name: source

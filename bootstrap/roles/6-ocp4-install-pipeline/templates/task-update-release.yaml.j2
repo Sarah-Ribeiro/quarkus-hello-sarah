@@ -1,0 +1,92 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: update-release
+  namespace: "{{ pipeline_namespace }}"
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/tags: deploy
+    tekton.dev/displayName: "argocd"
+spec:
+  description: >-
+    Toda vez que a esteira for iniciada a aplicação terá seu release incrementado em uma unidde
+  params:
+    - name: GIT_REPOSITORY
+      type: string
+    - name: GIT_USERNAME
+      type: string
+    - name: GIT_PASSWORD
+      type: string
+    - name: GIT_BRANCH
+      type: string
+
+  steps:
+
+    - name: release
+      image: registry.redhat.io/openshift-pipelines/pipelines-git-init-rhel8@sha256:868966ef9d4b54952d8a74eb83bba40eb1f52c0148994fa704efd0e3797c61c5
+      script: |
+
+        echo "--------------------------------------------"
+        #!/bin/bash
+        set -e
+        
+        cd $(workspaces.source.path)/source/
+        ls -la
+        
+        git config --global --add safe.directory /workspace/source/source
+        
+        git branch
+        git checkout $(params.GIT_BRANCH)
+        
+        # Arquivo pom.xml
+          POM_FILE="pom.xml"
+          
+          # Função para obter a versão atual
+          get_version() {
+          grep -oPm1 "(?<=<version>)[^<]+" "$POM_FILE"
+        }
+        
+        # Função para incrementar a versão
+          increment_version() {
+          local version=$1
+          local base_version=$(echo "$version" | awk -F. '{print $1"."$2}')
+          local patch_version=$(echo "$version" | awk -F. '{print $3 + 1}')
+          echo "$base_version.$patch_version"
+        }
+        
+        # Obter versão atual
+          current_version=$(get_version)
+          if [ -z "$current_version" ]; then
+        echo "Erro: Não foi possível obter a versão atual do arquivo pom.xml."
+          exit 1
+          fi
+        
+        echo "Versão atual: $current_version"
+        
+        # Incrementar a versão
+          new_version=$(increment_version "$current_version")
+        echo "Nova versão: $new_version"
+        
+        # Atualizar a versão no pom.xml
+          sed -i "s/<version>$current_version<\/version>/<version>$new_version<\/version>/" "$POM_FILE"
+            
+          # Confirmar a versão no pom.xml
+          echo "Build concluído com sucesso! Versão atualizada para $new_version."
+        
+          git config user.email "tekton-pipelines-ci@redhat.com"
+          git config user.name "tekton-pipelines-ci"
+          git add pom.xml
+          git commit -m "Versão atualizada para $new_version. "
+
+          echo 'git remote add auth-origin $(echo $(params.GIT_REPOSITORY) | sed -E "s#http://(.*)#http://$(params.GIT_USERNAME):$(params.GIT_PASSWORD)@\1#g")'
+  
+          git remote add auth-origin $(echo $(params.GIT_REPOSITORY) | sed -E "s#http://(.*)#http://$(params.GIT_USERNAME):$(params.GIT_PASSWORD)@\1#g")
+          git push auth-origin $(params.GIT_BRANCH)
+
+  workspaces:
+    - mountPath: /workspace/source
+      name: source
+
+

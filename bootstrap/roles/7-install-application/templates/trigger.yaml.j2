@@ -1,0 +1,22 @@
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: Trigger
+metadata:
+  name: repo-trigger
+  namespace: "{{ app_namespace }}"
+spec:
+  serviceAccountName: pipeline
+  interceptors:
+    - ref:
+        name: "github"
+      params:
+        - name: "secretRef"
+          value:
+            secretName: sct-webhook
+            secretKey: secretToken
+        - name: "eventTypes"
+          value: ["push"]
+  bindings:
+    - ref: repo-triggerbinding
+  template:
+    ref: repo-triggertemplate

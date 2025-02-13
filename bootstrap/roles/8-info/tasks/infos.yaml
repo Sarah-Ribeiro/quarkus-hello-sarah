@@ -1,0 +1,137 @@
+
+- name: extract ACS hostname
+  shell: |
+    oc get route central -o jsonpath='{.spec.host}' -n {{ acs_central_services_namespace }}
+  register: acs_hostname_result
+  delay: 5
+  retries: 10
+  until:
+    - acs_hostname_result.stdout != ""
+
+- name: extract ArgoCD hostname
+  shell: |
+    oc get route openshift-gitops-server -o jsonpath='{.spec.host}' -n openshift-gitops
+  register: gitops_hostname_result
+  delay: 5
+  retries: 10
+  until:
+    - gitops_hostname_result.stdout != ""
+
+- name: Get argocd password
+  kubernetes.core.k8s_info:
+    kind: Secret
+    api_version: /v1
+    name: openshift-gitops-cluster
+    namespace: openshift-gitops
+  register: r_argopass
+
+- name: dencode with shell
+  shell: "echo -n {{ r_argopass.resources[0].data['admin.password'] }}  | base64 --decode"
+  args:
+    executable: /bin/bash
+  register: argocd_pass
+
+- name: extract quay hostname
+  shell: |
+    oc get route {{ quay_registry_name }}-quay -o jsonpath='{.spec.host}' -n {{ quay_namespace }}
+  register: quay_hostname_result
+  delay: 5
+  retries: 10
+  until:
+    - quay_hostname_result.stdout != ""
+
+- name: extract sonarqube hostname
+  shell: |
+    oc get route sonarqube -o jsonpath='{.spec.host}' -n {{ sonar_namespace }}
+  register: sonar_hostname_result
+  delay: 5
+  retries: 10
+  until:
+    - sonar_hostname_result.stdout != ""
+
+- name: extract gogs hostname
+  shell: |
+    oc get route gogs -o jsonpath='{.spec.host}' -n {{ gogs_namespace }}
+  register: gogs_hostname_result
+  delay: 5
+  retries: 10
+  until:
+    - gogs_hostname_result.stdout != ""
+
+- name: extract nexus hostname
+  shell: |
+    oc get route nexus -o jsonpath='{.spec.host}' -n {{ nexus_namespace }}
+  register: nexus_hostname_result
+  delay: 5
+  retries: 10
+  until:
+    - nexus_hostname_result.stdout != ""
+
+- name: Get all Gitlab routes
+  kubernetes.core.k8s_info:
+    kind: Route
+    api_version: route.openshift.io/v1
+    namespace: "{{ gitlab_namespace }}"
+  register: gitlab_routes
+  until: gitlab_routes.resources|length > 4
+  retries: 40
+  delay: 10
+
+- name: Wait for route Gitlab with the desired prefix to appear
+  set_fact:
+    gitlab_route: "{{ gitlab_routes.resources | selectattr('metadata.name', 'search', '^gitlab-webservice-default.*') | list | first }}"
+
+- name: Get Gitlab password
+  kubernetes.core.k8s_info:
+    kind: Secret
+    api_version: /v1
+    name: gitlab-gitlab-initial-root-password
+    namespace: "{{ gitlab_namespace }}"
+  register: gitlab_pass
+
+- name: Decode base64 Gitlab Password
+  shell: "echo -n {{ gitlab_pass.resources[0].data['password'] }}  | base64 --decode"
+  register: gitlab_pass
+  args:
+    executable: /bin/bash
+
+- name: Infos
+  debug:
+    msg:
+      - "{{ info }}"
+      - "----- ACS -----"
+      - "Rota:      https://{{ acs_hostname_result.stdout }}"
+      - "User:      {{ acs_central_user }}"
+      - "Pass:      {{ acs_central_password_plain_text }}"
+      - "Namespace: {{ acs_central_services_namespace }}"
+      - "----- ArgoCD -----"
+      - "Rota:      https://{{ gitops_hostname_result.stdout }}"
+      - "User:      admin"
+      - "Pass:      {{ argocd_pass.stdout }}"
+      - "Namespace: openshift-gitops"
+      - "----- Quay -----"
+      - "Rota:      https://{{ quay_hostname_result.stdout }}"
+      - "User:      {{ quay_admin_username }}"
+      - "Pass:      {{ quay_admin_password }}"
+      - "Robot:     {{ quay_robot_account }}"
+      - "Namespace: {{ quay_namespace }}"
+      - "----- Sonarqube -----"
+      - "Rota:      https://{{ sonar_hostname_result.stdout }}"
+      - "User:      {{ sonar_user }}"
+      - "Pass:      {{ sonar_password }}"
+      - "Namespace: {{ sonar_namespace }}"
+      - "----- Gogs -----"
+      - "Rota:      http://{{ gogs_hostname_result.stdout }}"
+      - "User:      {{ gogs_user }}"
+      - "Pass:      {{ gogs_password }}"
+      - "Namespace: {{ gogs_namespace }}"
+      - "----- Nexus -----"
+      - "Rota:      https://{{ nexus_hostname_result.stdout }}"
+      - "User:      {{ nexus_user }}"
+      - "Pass:      {{ nexus_password }}"
+      - "Namespace: {{ nexus_namespace }}"
+      - "----- Gitlab -----"
+      - "Rota:      https://{{ gitlab_route.spec.host }}"
+      - "User:      {{ gitlab_user }}"
+      - "Pass:      {{ gitlab_pass.stdout }}"
+      - "Namespace: {{ gitlab_namespace }}"

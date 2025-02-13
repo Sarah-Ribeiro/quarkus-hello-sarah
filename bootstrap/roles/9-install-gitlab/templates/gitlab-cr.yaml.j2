@@ -1,0 +1,31 @@
+kind: GitLab
+apiVersion: apps.gitlab.com/v1beta1
+metadata:
+  name: gitlab
+  namespace: "{{ gitlab_namespace }}"
+spec:
+  chart:
+    version: 8.8.1
+    values:
+      gitlab:
+        persistence:
+          size: 20Gi
+      global:
+        hosts:
+          domain: apps.cluster-2l9jd.sandbox628.opentlc.com
+          hostSuffix: null
+        ingress:
+          annotations:
+            route.openshift.io/termination: edge
+          class: none
+          configureCertmanager: false
+          tls:
+            secretName: null
+        nginx-ingress:
+          enabled: false
+      postgresql:
+        persistence:
+          size: 10Gi
+        primary:
+          extendedConfiguration: max_connections = 200
+

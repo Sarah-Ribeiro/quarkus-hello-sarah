@@ -1,0 +1,85 @@
+
+- name: Create OperatorGroup
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'gitlab-operator-group.yaml.j2') }}"
+
+- name: Create Subscription
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'gitlab-subscription.yaml.j2') }}"
+
+
+# Os certificados do certmanager nao estão funcionando com o gitlab
+# qdo setamos o nome do secret na variavel tls do arquivo gitlab-cr.yaml.j2 as rotas não são criadas
+# mas os ingress recebem o certificado válido
+# o comando abaixo cria uma rota que funciona com o certificado
+#  oc create route edge rt-cert --service=gitlab-webservice-default --hostname=gitl.apps.cluster-2l9jd.sandbox628.opentlc.com --path=/ --port=http-workhorse
+#- name: Gitlab Certificate
+#  kubernetes.core.k8s:
+#    state: present
+#    definition: "{{ lookup('template', 'gitlab-cert.yaml.j2') }}"
+
+#- name: Gitlab Rolebinding
+#  shell: |
+#    # Create a Role to provide the router service account permissions to read the referenced secret by using the following command:
+#    oc create role secret-reader --verb=get,list,watch --resource=secrets --resource-name=sct-gitlab-tls --namespace={{ gitlab_namespace }}
+#    # Create a RoleBinding resource to bind the router service account with the newly created Role resource by using the following command:
+#    oc create rolebinding secret-reader-binding --role=secret-reader --serviceaccount=openshift-ingress:router --namespace={{ gitlab_namespace }}
+    
+- name: Deploy GitLab Custom Resource
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'gitlab-cr.yaml.j2') }}"
+
+- name: Get all Gitlab routes
+  kubernetes.core.k8s_info:
+    kind: Route
+    api_version: route.openshift.io/v1
+    namespace: "{{ gitlab_namespace }}"
+  register: gitlab_routes
+  until: gitlab_routes.resources|length > 4
+  retries: 40
+  delay: 10
+
+- name: Wait for route Gitlab with the desired prefix to appear
+  set_fact:
+    gitlab_route: "{{ gitlab_routes.resources | selectattr('metadata.name', 'search', '^gitlab-webservice-default.*') | list | first }}"
+
+- name: Get Gitlab password
+  kubernetes.core.k8s_info:
+    kind: Secret
+    api_version: /v1
+    name: gitlab-gitlab-initial-root-password
+    namespace: "{{ gitlab_namespace }}"
+  register: gitlab_pass
+
+- name: Decode base64 Gitlab Password
+  shell: "echo -n {{ gitlab_pass.resources[0].data['password'] }}  | base64 --decode"
+  register: shell_base64
+  args:
+    executable: /bin/bash
+
+
+- name: Wait for Gitlab availability
+  uri:
+    url: "https://{{ gitlab_route.spec.host }}"
+    method: GET
+    user: root
+    password: "{{ shell_base64.stdout }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: result
+  until: result.status == 200
+  retries: 15
+  delay: 20
+
+- name: Print Gitlab Route
+  debug:
+    msg: "{{ gitlab_route.spec.host }}"
+
+- name: Print Gitlab Password
+  debug:
+    msg: "{{ shell_base64.stdout }}"
+
+

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sct-argocd-env
+  namespace:  "{{ app_namespace }}"
+type: Opaque
+data:
+  ARGOCD_USERNAME: YWRtaW4K
+  ARGOCD_PASSWORD: "{{ r_argopass.resources[0].data['admin.password'] }}"

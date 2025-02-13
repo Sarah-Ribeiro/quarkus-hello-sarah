@@ -1,0 +1,481 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: generic-pipeline-"{{ pipeline_sufix }}"
+  namespace: "{{ pipeline_namespace }}"
+spec:
+
+  params:
+    - default: "<NOME APLICACAO>"
+      name: APP_NAME
+
+    - default: 'https://github.com/fctassinari/quarkus-hello.git'
+      name: GIT_REPO
+      type: string
+
+    - default: main
+      name: GIT_BRANCH
+      type: string
+
+    - default: .
+      name: PATH_CONTEXT
+      type: string
+
+    - default: 'procergs-soews'
+      name: QUAY_REPO_APP
+      type: string
+
+    - default: 'procergs'
+      name: QUAY_ORGANIZATION
+      type: string
+
+    - default: 'quay.apps.kilpro4810.pro.intra.rs.gov.br'
+      description: The registry and organization for quay
+      name: QUAY_REGISTRY
+      type: string
+
+    - default: 'procergs-soews-hml'
+      name: APP_NAMESPACE
+      type: string
+
+    - default: latest
+      description: The application image tag to build
+      name: IMAGE_TAG
+
+    - default: 'https://github.com/fctassinari/quarkus-hello-config.git'
+      description: The application manifests git repository
+      name: APP_MANIFESTS_GIT
+      type: string
+
+    - default: 'environments/hml'
+      description: The application manifests git repository path
+      name: KUSTOMIZATION_PATH
+      type: string
+
+    - default: 'quarkus-hello-hml'
+      description: The application name in ArgoCD
+      name: ARGO_CD_APPLICATION_NAME
+      type: string
+
+    - default: 'quarkus-hello.war'
+      description: Artifact Name to be deployed
+      name: ARTIFACT_NAME
+      type: string
+
+    - default: ""
+      name: GIT_USER
+      type: string
+
+    - default: ""
+      name: GIT_PASS
+      type: string
+
+    - default: openshift/ubi9-openjdk-21:1.21-3
+      description: The java imagestream in case Quarkus Build
+      name: JAVA_IMAGE
+      type: string
+  tasks:
+    - name: git-clone
+      params:
+        - name: url
+          value: $(params.GIT_REPO)
+        - name: revision
+          value: $(params.GIT_BRANCH)
+        - name: refspec
+          value: ''
+        - name: submodules
+          value: 'true'
+        - name: depth
+          value: '0'
+        - name: sslVerify
+          value: 'true'
+        - name: crtFileName
+          value: ca-bundle.crt
+        - name: subdirectory
+          value: source
+        - name: sparseCheckoutDirectories
+          value: ''
+        - name: deleteExisting
+          value: 'true'
+        - name: httpProxy
+          value: ''
+        - name: httpsProxy
+          value: ''
+        - name: noProxy
+          value: ''
+        - name: verbose
+          value: 'true'
+        - name: gitInitImage
+          value: 'registry.redhat.io/openshift-pipelines/pipelines-git-init-rhel8@sha256:868966ef9d4b54952d8a74eb83bba40eb1f52c0148994fa704efd0e3797c61c5'
+        - name: userHome
+          value: /home/git
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+      workspaces:
+        - name: output
+          workspace: workspace
+
+    - name: app-update-release
+      params:
+        - name: GIT_REPOSITORY
+          value: $(params.GIT_REPO)
+        - name: GIT_USERNAME
+          value: $(params.GIT_USER)
+        - name: GIT_PASSWORD
+          value: $(params.GIT_PASS)
+        - name: GIT_BRANCH
+          value: $(params.GIT_BRANCH)
+      runAfter:
+        - git-clone
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: update-release
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+      workspaces:
+        - name: source
+          workspace: workspace
+
+    - name: unit-tests
+      params:
+        - name: MAVEN_IMAGE
+          value: 'registry.redhat.io/ubi9/openjdk-21:1.20-2.1729773471'
+        - name: GOALS
+          value:
+            - package
+            - '-f'
+            - source
+            - '-Dmaven.repo.local=$(workspaces.source.path)/.m2'
+      runAfter:
+        - app-update-release
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: maven
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+      workspaces:
+        - name: source
+          workspace: workspace
+        - name: maven-settings
+          workspace: maven-settings
+
+    - name: code-analysis
+      params:
+        - name: MAVEN_IMAGE
+          value: 'registry.redhat.io/ubi9/openjdk-21:1.20-2.1729773471'
+        - name: GOALS
+          value:
+            - install
+            - 'sonar:sonar'
+            - '-f'
+            - source
+            - '-Dsonar.host.url=https://{{ sonar_namespace }}.{{ cluster_url }}/'
+            - '-Dsonar.userHome=/tmp/sonar'
+            - '-Dsonar.login={{ sonar_token }}'
+            - '-Dmaven.repo.local=$(workspaces.source.path)/.m2'
+            - '-Dmaven.test.skip=true'
+      runAfter:
+        - unit-tests
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: maven
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+      workspaces:
+        - name: source
+          workspace: workspace
+        - name: maven-settings
+          workspace: maven-settings
+
+#    - name: dependency-report
+#      params:
+#        - name: SOURCE_DIR
+#          value: source
+#      runAfter:
+#        - unit-tests
+#      taskRef:
+#        resolver: cluster
+#        params:
+#          - name: name
+#            value: dependency-report
+#          - name: namespace
+#            value: "{{ pipeline_namespace }}"
+#          - name: kind
+#            value: task
+#      workspaces:
+#        - name: source
+#          workspace: workspace
+#        - name: maven-settings
+#          workspace: maven-settings
+
+
+    - name: release-app
+      params:
+        - name: MAVEN_IMAGE
+          value: 'registry.redhat.io/ubi9/openjdk-21:1.20-2.1729773471'
+        - name: GOALS
+          value:
+            - deploy
+            - '-f'
+            - source
+            - '-Dmaven.repo.local=$(workspaces.source.path)/.m2'
+            - '-Dmaven.test.skip=true'
+            - '-DaltDeploymentRepository=nexus::default::https://{{ nexus_namespace }}.{{ cluster_url }}/repository/maven-releases/'
+      runAfter:
+        - code-analysis
+#        - dependency-report
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: maven
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+      workspaces:
+        - name: source
+          workspace: workspace
+        - name: maven-settings
+          workspace: maven-settings
+
+    - name: build-image
+      params:
+        - name: IMAGE
+          value: '$(params.QUAY_REGISTRY)/$(params.QUAY_ORGANIZATION)/$(params.QUAY_REPO_APP):$(params.IMAGE_TAG)'
+        - name: JAVA_IMAGE
+          value: $(params.JAVA_IMAGE)
+        - name: TLSVERIFY
+          value: 'false'
+        - name: MAVEN_MIRROR_URL
+          value: 'https://{{ nexus_namespace }}.{{ cluster_url }}/repository/maven-releases/'
+        - name: PATH_CONTEXT
+          value: $(workspaces.source.path)/source/target
+        - name: MAVEN_ARGS_APPEND
+          value: '-Dmaven.repo.local=$(workspaces.source.path)/.m2 -Dmaven.test.skip=true '
+      runAfter:
+        - release-app
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: build-quarkus-image
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+      workspaces:
+        - name: source
+          workspace: workspace
+
+## Exemplo S2I
+#    - name: build-image
+#      params:
+#        - name: IMAGE
+#          value: '$(params.QUAY_REGISTRY)/$(params.QUAY_ORGANIZATION)/$(params.QUAY_REPO_APP):$(params.IMAGE_TAG)'
+#        - name: TLSVERIFY
+#          value: 'false'
+#        - name: MAVEN_MIRROR_URL
+#          value: 'https://{{ nexus_namespace }}.{{ cluster_url }}/repository/maven-releases/'
+#        - name: PATH_CONTEXT
+#          value: $(workspaces.source.path)/source/target
+#        - name: JAVA_IMAGE
+#          value: $(params.JAVA_IMAGE)
+#        - name: MAVEN_ARGS_APPEND
+#          value: '-Dmaven.repo.local=$(workspaces.source.path)/.m2 -Dmaven.test.skip=true '
+#      runAfter:
+#        - release-app
+#      taskRef:
+#        kind: Task
+#        name: s2i-java
+#      workspaces:
+#        - name: source
+#          workspace: workspace
+
+    - name: image-scan
+      params:
+        - name: image
+          value: '$(params.QUAY_REGISTRY)/$(params.QUAY_ORGANIZATION)/$(params.QUAY_REPO_APP):$(params.IMAGE_TAG)'
+        - name: rox_api_token
+          value: sct-rox
+        - name: rox_central_endpoint
+          value: sct-rox
+        - name: output_format
+          value: table
+        - name: image_digest
+          value: $(tasks.build-image.results.IMAGE_DIGEST)
+      runAfter:
+        - build-image
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: rox-image-scan
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+
+    - name: image-check
+      params:
+        - name: image
+          value: '$(params.QUAY_REGISTRY)/$(params.QUAY_ORGANIZATION)/$(params.QUAY_REPO_APP):$(params.IMAGE_TAG)'
+        - name: rox_api_token
+          value: sct-rox
+        - name: rox_central_endpoint
+          value: sct-rox
+        - name: image_digest
+          value: $(tasks.build-image.results.IMAGE_DIGEST)
+        - name: app_namespace
+          value: '$(params.APP_NAMESPACE)'
+      runAfter:
+        - build-image
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: rox-image-check
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+
+    - name: deploy-check
+      params:
+        - name: GIT_REPOSITORY
+          value: $(params.APP_MANIFESTS_GIT)
+        - name: rox_api_token
+          value: sct-rox
+        - name: rox_central_endpoint
+          value: sct-rox
+        - name: file
+          value: deployment.yaml
+        - name: deployment_files_path
+          value: app
+        - name: app_name
+          value: '$(params.APP_NAME)'
+      runAfter:
+        - build-image
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: rox-deployment-check
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+      workspaces:
+        - name: workspace
+          workspace: workspace
+
+    - name: update-deployment
+      params:
+        - name: GIT_REPOSITORY
+          value: $(params.APP_MANIFESTS_GIT)
+        - name: GIT_USERNAME
+          value: $(params.GIT_USER)
+        - name: GIT_PASSWORD
+          value: $(params.GIT_PASS)
+        - name: GIT_BRANCH
+          value: $(params.GIT_BRANCH)
+        - name: CURRENT_IMAGE
+          value: '$(params.QUAY_REGISTRY)/$(params.QUAY_ORGANIZATION)/$(params.QUAY_REPO_APP):$(params.IMAGE_TAG)'
+        - name: NEW_IMAGE
+          value: '$(params.QUAY_REGISTRY)/$(params.QUAY_ORGANIZATION)/$(params.QUAY_REPO_APP)'
+        - name: NEW_DIGEST
+          value: $(tasks.build-image.results.IMAGE_DIGEST)
+        - name: KUSTOMIZATION_PATH
+          value: '$(params.KUSTOMIZATION_PATH)'
+      runAfter:
+        - image-scan
+        - deploy-check
+        - image-check
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: git-update-deployment
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+      workspaces:
+        - name: workspace
+          workspace: workspace
+
+    - name: wait-application
+      params:
+        - name: argo-cd-application-name
+          value: '$(params.ARGO_CD_APPLICATION_NAME)'
+        - name: argocd-version
+          value: 'v2.13.1'
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: argocd-task-sync-and-wait
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+      runAfter:
+        - update-deployment
+
+    - name: integration-tests
+      taskRef:
+        resolver: cluster
+        params:
+          - name: name
+            value: integration-tests
+          - name: namespace
+            value: "{{ pipeline_namespace }}"
+          - name: kind
+            value: task
+      runAfter:
+        - wait-application
+
+
+  workspaces:
+    - name: maven-settings
+    - name: workspace
+
+
+
+
+
+
+#
+#    - name: listar
+#      params:
+#        - name: PATH
+#          value: $(workspaces.source.path)/source/target
+#      runAfter:
+#        - release-app
+#      taskRef:
+#        kind: Task
+#        name: listar
+#      workspaces:
+#        - name: source
+#          workspace: workspace
+#
+#

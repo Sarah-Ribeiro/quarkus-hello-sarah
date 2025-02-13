@@ -1,0 +1,123 @@
+# Code attribution
+# Some code from here - https://github.com/redhat-cop/rhel-edge-automation-arch/blob/main/ansible/roles/quay-raw-create-user/tasks/main.yaml
+
+- name: extract quay hostname
+  shell: |
+    oc get route {{ quay_registry_name }}-quay -o jsonpath='{.spec.host}' -n {{ quay_namespace }}
+  register: quay_hostname_result
+  delay: 5
+  retries: 10
+  until:
+    - quay_hostname_result.stdout != ""
+
+- name: Set Quay hostname
+  ansible.builtin.set_fact:
+    quay_route: "{{ quay_hostname_result.stdout }}"
+
+- name: Wait until Quay Application is Responding
+  ansible.builtin.uri:
+    return_content: yes
+    status_code: 200
+    url: "https://{{ quay_route }}"
+    validate_certs: no
+  delay: 10
+  register: quay_check
+  retries: 30
+  until:
+    quay_check.status == 200
+
+- name: Initialize Quay User
+  ansible.builtin.uri:
+    body_format: json
+    body:
+      username: "{{ quay_admin_username }}"
+      email: "{{ quay_admin_email }}"
+      password: "{{ quay_admin_password }}"
+      access_token: "true"
+    headers:
+      Content-Type: application/json
+    method: POST
+    url: "https://{{ quay_route }}/api/v1/user/initialize"
+    validate_certs: no
+  register: quay_init_response
+  failed_when:
+    - quay_init_response.status != 200
+  ignore_errors: true
+
+- name: Set Output Message from Quay on User Initalize
+  ansible.builtin.set_fact:
+    init_output_msg: "{{ quay_init_response.json.message|default('') }}"
+  ignore_errors: true
+
+- name: Use API Token to continue Creating
+  block:
+
+    - name: Set Quay Access Token
+      ansible.builtin.set_fact:
+        quay_access_token: "{{ quay_init_response.json.access_token }}"
+
+    - name: Create Quay Organization
+      ansible.builtin.uri:
+        body_format: json
+        body:
+          name: "{{ quay_org_name }}"
+        headers:
+          Content-Type: application/json
+          Authorization: "Bearer {{ quay_access_token }}"
+        method: POST
+        url: "https://{{ quay_route }}/api/v1/organization/"
+        validate_certs: no
+        status_code: "{{ quay_org_created_success_status_code }}"
+      register: quay_org_response
+
+    - name: Print quay_org_response
+      debug:
+        msg: "{{ quay_org_response }}"
+
+    - name: Create Robot Account
+      ansible.builtin.uri:
+        body_format: json
+        body:
+          description": "Robot Account for CICD "
+        headers:
+          Content-Type: application/json
+          Authorization: "Bearer {{ quay_access_token }}"
+        method: PUT
+        url: "https://{{ quay_route }}/api/v1/organization/{{ quay_org_name }}/robots/{{ quay_robot_account }}"
+        validate_certs: no
+        status_code: "{{ quay_robot_created_success_status_code }}"
+      register: quay_robot_response
+
+    - name: Print quay_robot_response
+      debug:
+        msg: "{{ quay_robot_response }}"
+
+    - name: Set Robot Token from Creating New Robot Account
+      ansible.builtin.set_fact:
+        quay_robot_token: "{{ quay_robot_response.json.token }}"
+
+- name: Get ACS central route
+  kubernetes.core.k8s_info:
+    kind: Route
+    api_version: route.openshift.io/v1
+    namespace: stackrox
+    name: central
+  register: r_stackrox_central_route
+  retries: 10
+  delay: 20
+
+- name: Store central route as a fact
+  set_fact:
+    f_stackrox_central_addr: "{{ r_stackrox_central_route.resources[0].spec.host }}"
+
+- name: Creating ACS Integration with the Quay Internal Registry
+  uri:
+    url: "https://{{ f_stackrox_central_addr }}/v1/imageintegrations"
+    body: "{{ lookup('template', 'templates/quay_registry_acs.yml.j2') }}"
+    method: POST
+    user: admin
+    password: "{{ acs_central_password_plain_text }}"
+    body_format: json
+    force_basic_auth: true
+    validate_certs: no
+    status_code: 200, 400

@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: "{{ app_name }}-{{ app_environment }}"
+  namespace: openshift-gitops
+spec:
+  destination:
+    namespace: "{{ app_name }}-{{ app_environment }}"
+    server: https://kubernetes.default.svc
+  project: "{{ app_name }}"
+  source:
+    path: environments/{{ app_environment }}
+    repoURL: http://{{ r_gogs_route.resources[0].spec.host }}/gogs/{{ app_name }}-config
+    targetRevision: HEAD
+#  syncPolicy:
+#    automated:
+#      prune: true                                   # Remove recursos obsoletos
+#      selfHeal: true                                # Restaura recursos modificados manualmente

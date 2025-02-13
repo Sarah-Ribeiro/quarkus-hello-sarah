@@ -1,0 +1,4 @@
+quay_admin_email: '{{ company_name }}@redhat.com'
+
+
+quay_org_name: "{{ company_name }}"

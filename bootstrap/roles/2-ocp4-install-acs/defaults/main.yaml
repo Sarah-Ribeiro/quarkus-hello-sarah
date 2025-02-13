@@ -1,0 +1,4 @@
+acs_expected_crds:
+- centrals.platform.stackrox.io
+- securedclusters.platform.stackrox.io
+

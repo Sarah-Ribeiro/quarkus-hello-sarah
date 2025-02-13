@@ -1,0 +1,48 @@
+company_name: 'smanager'
+
+pipeline_namespace: "{{ company_name }}-pipeline"
+
+sa_cluster_admin: 'cluster-admin-sa'
+sa_cluster_admin_token: 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjhfME5ZUXQyNTZ1WV94VTZYM1RVaUV6R0VJMXhWMUdzOWVCamFzQm16WTgifQ.eyJhdWQiOlsiaHR0cHM6Ly9rdWJlcm5ldGVzLmRlZmF1bHQuc3ZjIl0sImV4cCI6NTMzOTQ0MzMwMSwiaWF0IjoxNzM5NDQ2OTAxLCJpc3MiOiJodHRwczovL2t1YmVybmV0ZXMuZGVmYXVsdC5zdmMiLCJrdWJlcm5ldGVzLmlvIjp7Im5hbWVzcGFjZSI6Imt1YmUtc3lzdGVtIiwic2VydmljZWFjY291bnQiOnsibmFtZSI6ImNsdXN0ZXItYWRtaW4tc2EiLCJ1aWQiOiI4MDNmZDM4MC1kMzM2LTRiOGMtYWI2NC1hYjNmODZhZDdiYjMifX0sIm5iZiI6MTczOTQ0NjkwMSwic3ViIjoic3lzdGVtOnNlcnZpY2VhY2NvdW50Omt1YmUtc3lzdGVtOmNsdXN0ZXItYWRtaW4tc2EifQ.yicpPovPR1XiHEoO8WVmWFf8cbMC142R52Dxfsebwae2K24Fm4g6m-EtKUzbZKrh7Qf-5d48TIjBaN4qqrHjZdedEek5iZy5PmlesFT5XeCsxxmXHx26mQuxPeanzda4fhDkDZ-Yt7ni2mTTdUb6S09ZKOSvw9xzd9pGSySPvDeLkFBFaRpXhh2W_kdJGsHnTTELhBunkPBbMulKtjLzA-JokpHSaAL7wLjbu9nax_kn5GQ_KKf-JtSYp8pD_SzqbSl1pwUiUx2-EAH95hUrGcdlfSMzXWwFGAmBuEIrSwx6heSJsPtwdQ3uSC59DtDODlPHDZsWxveH0hJR7F7SdlZD8McC9JjgT_PB2j8O5zWmeWEjQzOtBBpJ6Y8n_Jjdhm40r7EJvOVBRKCjQMFy6kuy6vp--yYnZn_HIF3_amSOEr9W0M4-Pfg78rRkhwKISU7ZG9Jj7_ViDStm9foRQa_PVvJnsfSfxlNrMLAnzqt20W5vQJ0R8PfsGMt99n8TtYumwKVG_RjBiP7kdT-s4n4e_999DAm8C0gPRROTDHezlTdoVjxIgc_PsjsAEay7hhbKaqPwXXHGacKXk-XdgQ5t6zsH3iLIXQ6sDbcRmKFjVNSr1UyYpeyZ3pMMrNH_wBu3MV7i0uLPQ9hr-b4wAMAdb0WpgwtvSd7oVieCw9Q'
+cluster_url: 'apps.cluster-2l9jd.sandbox628.opentlc.com'
+
+acs_central_services_namespace: 'stackrox'
+acs_central_password_base64: 'YWRtaW4xMjM0' #base64
+acs_central_password_plain_text: 'admin1234'
+acs_central_user: 'admin'
+
+quay_admin_username: 'admin'
+quay_admin_password: 'admin1234'
+quay_robot_account: 'quay_robot'
+quay_namespace: 'quay'
+quay_registry_name: '{{ company_name }}-registry'
+#Can obtain status codes from Swagger of quay route/api/v1/discovery
+quay_org_created_success_status_code: '201'
+quay_repo_created_success_status_code: '201'
+quay_robot_created_success_status_code: '201'
+quay_perm_success_status_code: '200'
+
+
+sonar_namespace: 'sonarqube'
+sonar_token: 'squ_38c90952db0b5673eab6b5a377318416bcaed43f'
+sonar_user: 'admin'
+sonar_password: 'admin1234'
+
+gitlab_user: 'root'
+gitlab_namespace: 'gitlab-system'
+  
+gogs_namespace: 'gogs'
+gogs_user: 'gogs'
+gogs_password: 'gogs'
+
+nexus_namespace: 'nexus'
+nexus_user: 'admin'
+nexus_password: 'admin1234'
+nexus_url: "{{ nexus_namespace }}.{{ cluster_url }}"
+  
+#  ansible-vault encrypt all.yaml
+#  ansible-vault dencrypt all.yaml
+#  ansible-vault view all.yaml
+#
+#  ansible-playbook bootstrap/deploy_pipeline.yaml -v -e "install=quay,acs" --ask-vault-pass
+
