@@ -14,7 +14,7 @@
 # qdo setamos o nome do secret na variavel tls do arquivo gitlab-cr.yaml.j2 as rotas não são criadas
 # mas os ingress recebem o certificado válido
 # o comando abaixo cria uma rota que funciona com o certificado
-#  oc create route edge rt-cert --service=gitlab-webservice-default --hostname=gitl.apps.cluster-2l9jd.sandbox628.opentlc.com --path=/ --port=http-workhorse
+#  oc create route edge rt-cert --service=gitlab-webservice-default --hostname=gitl.apps.cluster-lnrlc.dynamic.redhatworkshops.io --path=/ --port=http-workhorse
 #- name: Gitlab Certificate
 #  kubernetes.core.k8s:
 #    state: present
