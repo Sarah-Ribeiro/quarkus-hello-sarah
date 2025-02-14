@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: generic-pipeline-"{{ pipeline_sufix }}"
+  name: generic-pipeline-{{ pipeline_sufix }}
   namespace: "{{ pipeline_namespace }}"
 spec:
 
