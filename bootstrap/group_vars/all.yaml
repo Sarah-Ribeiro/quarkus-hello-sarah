@@ -32,7 +32,7 @@ gitlab_user: 'root'
 gitlab_namespace: 'gitlab-system'
   
 gogs_namespace: 'gogs'
-gogs_user: 'gogs'
+gogs_user: 'root@xyz.com.br'
 gogs_password: 'gogs'
 
 nexus_namespace: 'nexus'
