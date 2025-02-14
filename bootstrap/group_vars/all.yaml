@@ -24,7 +24,7 @@ quay_perm_success_status_code: '200'
 
 
 sonar_namespace: 'sonarqube'
-sonar_token: 'squ_f19a1ff1d155015d162f252c93574ac2a1e08146'
+sonar_token: 'squ_5b589e0bb1816a64e699603d3676110062fdb9cf'
 sonar_user: 'admin'
 sonar_password: 'admin1234'
 
